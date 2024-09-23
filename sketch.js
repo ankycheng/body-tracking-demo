@@ -44,8 +44,8 @@ let targetPose = null;
 const lerpAmount = 0.2; // Adjust this value between 0 and 1 to control smoothing
 
 function preload() {
-  //   demoVideo = createVideo("assets/demo.mp4");
   backgroundVideo = createVideo("assets/bg.mp4");
+
   imgBody = loadImage("assets/Body&Head.png");
   leftArm1 = loadImage("assets/Leftarm.png");
   rightArm1 = loadImage("assets/Rightarm.png");
@@ -99,12 +99,20 @@ function setup() {
   let button;
   button = createButton("Start");
   button.mousePressed(() => {
-    console.log("Pressed");
+    backgroundVideo.muted = true;
+    backgroundVideo.loop();
   });
   button.position(10, 10);
-
   backgroundVideo.hide();
-  backgroundVideo.loop();
+  image(
+    backgroundVideo,
+    0,
+    0,
+    backgroundVideo.width * (wh / backgroundVideo.height),
+    wh
+  );
+
+  
 }
 
 function gotPoses(results) {
@@ -114,15 +122,6 @@ function gotPoses(results) {
       currentPose = JSON.parse(JSON.stringify(targetPose));
     }
   }
-}
-
-function mousePressed() {
-  if (isPlaying) {
-    demoVideo.pause();
-  } else {
-    demoVideo.play();
-  }
-  isPlaying = !isPlaying;
 }
 
 function draw() {
