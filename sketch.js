@@ -1,4 +1,4 @@
-var minAccuracy = 0.2;
+var minAccuracy = 0.5;
 
 var webcam; // webcam input
 var posenet; // PoseNet model
@@ -36,12 +36,29 @@ let Outfit1Body,
   Outfit1UpperArm1,
   Outfit1UpperArm2;
 
+let Outfit2Body,
+  Outfit2LowerArm1,
+  Outfit2LowerArm2,
+  Outfit2Pants1,
+  Outfit2Pants2,
+  Outfit2Shoes1,
+  Outfit2Shoes2,
+  Outfit2UpperArm1,
+  Outfit2UpperArm2;
+
 let scaleFactor = 0.3;
-let isPlaying = true;
+let isPlaying = false;
 
 let currentPose = null;
 let targetPose = null;
+
+let currentPose2 = null;
+let targetPose2 = null;
 const lerpAmount = 0.2; // Adjust this value between 0 and 1 to control smoothing
+let button;
+let outfit = false;
+
+let fadeAlpha = 0;
 
 function preload() {
   backgroundVideo = createVideo("assets/bg.mp4");
@@ -66,13 +83,23 @@ function preload() {
   Outfit1Shoes2 = loadImage("assets/Outfit1Shoes2.png");
   Outfit1UpperArm1 = loadImage("assets/Outfit1UpperArm1.png");
   Outfit1UpperArm2 = loadImage("assets/Outfit1UpperArm2.png");
+
+  Outfit2Body = loadImage("assets/Outfit2Body.png");
+  Outfit2LowerArm1 = loadImage("assets/Outfit2LowerArm1.png");
+  Outfit2LowerArm2 = loadImage("assets/Outfit2LowerArm2.png");
+  Outfit2Pants1 = loadImage("assets/Outfit2Pants1.png");
+  Outfit2Pants2 = loadImage("assets/Outfit2Pants2.png");
+  Outfit2Shoes1 = loadImage("assets/Outfit2Shoes1.png");
+  Outfit2Shoes2 = loadImage("assets/Outfit2Shoes2.png");
+  Outfit2UpperArm1 = loadImage("assets/Outfit2UpperArm1.png");
+  Outfit2UpperArm2 = loadImage("assets/Outfit2UpperArm2.png");
 }
 
 function setup() {
-  //   wh = windowHeight;
-  //   ww = (wh * 16) / 9;
-  ww = windowWidth;
   wh = windowHeight;
+  ww = (wh * 16) / 9;
+  // ww = windowWidth;
+  // wh = windowHeight;
   createCanvas(ww, wh);
 
   webcam = createCapture(VIDEO);
@@ -86,7 +113,11 @@ function setup() {
   webcam.hide();
   background(255);
 
-  var options = { detectionType: "single", flipHorizontal: true };
+  var options = {
+    detectionType: "single",
+    flipHorizontal: true,
+    maxPoseDetections: 2,
+  };
 
   posenet = ml5.poseNet(webcam, options);
 
@@ -96,11 +127,10 @@ function setup() {
     gotPoses(results);
   });
 
-  let button;
+  
   button = createButton("Start");
   button.mousePressed(() => {
-    backgroundVideo.muted = true;
-    backgroundVideo.loop();
+    playVideo();
   });
   button.position(10, 10);
   backgroundVideo.hide();
@@ -111,15 +141,38 @@ function setup() {
     backgroundVideo.width * (wh / backgroundVideo.height),
     wh
   );
+}
 
-  
+function playVideo() {
+  backgroundVideo.muted = true;
+  backgroundVideo.play();
+  isPlaying = true;
+  // backgroundVideo.speed(10);
+  setTimeout(() => {
+    outfit = true;
+  }, 3000);
+  button.hide();
 }
 
 function gotPoses(results) {
   if (results.length > 0) {
+    // console.log(results);
     targetPose = results[0].pose;
     if (!currentPose) {
       currentPose = JSON.parse(JSON.stringify(targetPose));
+    }
+    if (
+      results.length > 1 &&
+      abs(getBodyCenter(results[0].pose).x - getBodyCenter(results[1].pose).x) >
+        300
+    ) {
+      targetPose2 = results[1].pose;
+      if (!currentPose2) {
+        currentPose2 = JSON.parse(JSON.stringify(targetPose2));
+      }
+    } else {
+      targetPose2 = null;
+      currentPose2 = null;
     }
   }
 }
@@ -139,34 +192,78 @@ function draw() {
   //   scale(ww / demoVideo.width, wh / demoVideo.height);
 
   //   image(demoVideo, 0, 0, width, height);
-  //   scale(-1, 1);
-  //   image(webcam, 0, 0, -width, height);
+  // scale(-1, 1);
+  // image(webcam, 0, 0, -width, height);
   pop();
-
   if (currentPose && targetPose) {
     push();
-    lerpPoses();
-    // drawKeypoints();
+    lerpPoses(currentPose, targetPose);
+    // drawKeypoints(currentPose);
 
     push();
-    translate(0, -10);
-    scale(0.8);
-    drawBody();
-    drawOutfit1();
+    // translate(0, -10);
+    scale(0.5);
+    drawBody(currentPose);
+    if (outfit) {
+      tint(255, fadeAlpha);
+      fadeAlpha += 10;
+      drawOutfit2(currentPose);
+      noTint();
+    }
+    pop();
+    pop();
+  }
+  if (
+    currentPose2 &&
+    targetPose2 &&
+    abs(getBodyCenter(currentPose2).x - getBodyCenter(currentPose).x) > 500
+  ) {
+    push();
+    lerpPoses(currentPose2, targetPose2);
+    // drawKeypoints(currentPose2);
+
+    push();
+    // translate(0, -10);
+    scale(0.5);
+    drawBody(currentPose2);
+    if (outfit) {
+      tint(255, fadeAlpha);
+      fadeAlpha += 10;
+      drawOutfit1(currentPose2);
+      noTint();
+    }
     pop();
     pop();
   }
 }
 
-function getBodyCenter() {
+function keyPressed() {
+  if (keyCode === 32) {
+    // 32 is the keyCode for the space bar
+    // Your code here - this will run when space is pressed
+    console.log("Space bar pressed!");
+    // For example, you could toggle video play/pause:
+    if (isPlaying) {
+      console.log("is playing");
+      backgroundVideo.pause();
+      isPlaying = false;
+    } else {
+      console.log("is not playing");
+      backgroundVideo.play();
+      isPlaying = true;
+    }
+  }
+}
+
+function getBodyCenter(poseData) {
   // get the body center by averaging the x and y coordinates of the keypoints: right shoulder, left shoulder, right hip, left hip
   var x = 0;
   var y = 0;
-  if (!currentPose) {
+  if (!poseData) {
     return { x: 0, y: 0 };
   }
 
-  var keypoints = currentPose.keypoints;
+  var keypoints = poseData.keypoints;
   x =
     (keypoints[5].position.x +
       keypoints[6].position.x +
@@ -186,8 +283,8 @@ function getBodyCenter() {
   };
 }
 
-function drawBody() {
-  var bodyCenter = getBodyCenter();
+function drawBody(poseData) {
+  var bodyCenter = getBodyCenter(poseData);
   // Draw the body
   push();
   translate(
@@ -207,8 +304,8 @@ function drawBody() {
   push();
   translate(bodyCenter.x + 30, bodyCenter.y - 50);
   let angle = atan2(
-    currentPose.keypoints[7].position.y - currentPose.keypoints[5].position.y,
-    currentPose.keypoints[7].position.x - currentPose.keypoints[5].position.x
+    poseData.keypoints[7].position.y - poseData.keypoints[5].position.y,
+    poseData.keypoints[7].position.x - poseData.keypoints[5].position.x
   );
   rotate(angle);
   image(
@@ -221,9 +318,10 @@ function drawBody() {
 
   //   Draw the left arm2
   translate(scaleFactor * leftArm1.width - 10, -5);
+  rotate(-angle);
   angle = atan2(
-    currentPose.keypoints[9].position.y - currentPose.keypoints[7].position.y,
-    currentPose.keypoints[9].position.x - currentPose.keypoints[7].position.x
+    poseData.keypoints[9].position.y - poseData.keypoints[7].position.y,
+    poseData.keypoints[9].position.x - poseData.keypoints[7].position.x
   );
   rotate(angle);
   image(
@@ -239,8 +337,8 @@ function drawBody() {
   push();
   translate(bodyCenter.x - 30, bodyCenter.y - 45);
   angle = atan2(
-    currentPose.keypoints[8].position.y - currentPose.keypoints[6].position.y,
-    currentPose.keypoints[8].position.x - currentPose.keypoints[6].position.x
+    poseData.keypoints[8].position.y - poseData.keypoints[6].position.y,
+    poseData.keypoints[8].position.x - poseData.keypoints[6].position.x
   );
   rotate(angle);
   image(
@@ -253,11 +351,12 @@ function drawBody() {
 
   // Draw the right arm2
   translate(scaleFactor * rightArm1.width - 10, -20);
+  rotate(-angle);
   angle = atan2(
-    currentPose.keypoints[10].position.y - currentPose.keypoints[8].position.y,
-    currentPose.keypoints[10].position.x - currentPose.keypoints[8].position.x
+    poseData.keypoints[10].position.y - poseData.keypoints[8].position.y,
+    poseData.keypoints[10].position.x - poseData.keypoints[8].position.x
   );
-  rotate(angle + PI);
+  rotate(angle);
   image(
     rightArm2,
     0,
@@ -271,8 +370,8 @@ function drawBody() {
   push();
   translate(bodyCenter.x + 35, bodyCenter.y + 130);
   angle = atan2(
-    currentPose.keypoints[13].position.y - currentPose.keypoints[11].position.y,
-    currentPose.keypoints[13].position.x - currentPose.keypoints[11].position.x
+    poseData.keypoints[13].position.y - poseData.keypoints[11].position.y,
+    poseData.keypoints[13].position.x - poseData.keypoints[11].position.x
   );
   rotate(angle - 0.5 * PI);
   image(
@@ -286,25 +385,28 @@ function drawBody() {
   // Draw the left leg2
   translate(-5, scaleFactor * leftLeg1.height - 10);
   angle = atan2(
-    currentPose.keypoints[15].position.y - currentPose.keypoints[13].position.y,
-    currentPose.keypoints[15].position.x - currentPose.keypoints[13].position.x
+    poseData.keypoints[15].position.y - poseData.keypoints[13].position.y,
+    poseData.keypoints[15].position.x - poseData.keypoints[13].position.x
   );
   rotate(angle - 0.5 * PI);
-  image(
-    leftLeg2,
-    0,
-    0,
-    scaleFactor * leftLeg2.width,
-    scaleFactor * leftLeg2.height
-  );
+  if (!outfit) {
+    image(
+      leftLeg2,
+      0,
+      0,
+      scaleFactor * leftLeg2.width,
+      scaleFactor * leftLeg2.height
+    );
+  }
+
   pop();
 
   // Draw the right leg1
   push();
   translate(bodyCenter.x - 30, bodyCenter.y + 130);
   angle = atan2(
-    currentPose.keypoints[14].position.y - currentPose.keypoints[12].position.y,
-    currentPose.keypoints[14].position.x - currentPose.keypoints[12].position.x
+    poseData.keypoints[14].position.y - poseData.keypoints[12].position.y,
+    poseData.keypoints[14].position.x - poseData.keypoints[12].position.x
   );
   rotate(angle - 0.5 * PI);
   image(
@@ -318,30 +420,32 @@ function drawBody() {
   // Draw the right leg2
   translate(-5, scaleFactor * rightLeg1.height - 10);
   angle = atan2(
-    currentPose.keypoints[16].position.y - currentPose.keypoints[14].position.y,
-    currentPose.keypoints[16].position.x - currentPose.keypoints[14].position.x
+    poseData.keypoints[16].position.y - poseData.keypoints[14].position.y,
+    poseData.keypoints[16].position.x - poseData.keypoints[14].position.x
   );
   rotate(angle - 0.5 * PI);
+  if (!outfit) {
   image(
     rightLeg2,
     (-scaleFactor * rightLeg2.width) / 2,
     0,
     scaleFactor * rightLeg2.width,
     scaleFactor * rightLeg2.height
-  );
+    );
+  }
   pop();
 }
 
-function drawOutfit1() {
-  var bodyCenter = getBodyCenter();
+function drawOutfit1(poseData) {
+  var bodyCenter = getBodyCenter(poseData);
 
   // Draw the left arm1
   push();
   translate(bodyCenter.x + 50, bodyCenter.y - 70);
   scale(1.1);
   let angle = atan2(
-    currentPose.keypoints[7].position.y - currentPose.keypoints[5].position.y,
-    currentPose.keypoints[7].position.x - currentPose.keypoints[5].position.x
+    poseData.keypoints[7].position.y - poseData.keypoints[5].position.y,
+    poseData.keypoints[7].position.x - poseData.keypoints[5].position.x
   );
   rotate(angle);
   image(
@@ -353,9 +457,10 @@ function drawOutfit1() {
   );
   //   Draw the left arm2
   translate(scaleFactor * leftArm1.width - 20, 0);
+  rotate(-angle);
   angle = atan2(
-    currentPose.keypoints[9].position.y - currentPose.keypoints[7].position.y,
-    currentPose.keypoints[9].position.x - currentPose.keypoints[7].position.x
+    poseData.keypoints[9].position.y - poseData.keypoints[7].position.y,
+    poseData.keypoints[9].position.x - poseData.keypoints[7].position.x
   );
   rotate(angle);
 
@@ -372,8 +477,8 @@ function drawOutfit1() {
   push();
   translate(bodyCenter.x - 40, bodyCenter.y - 60);
   angle = atan2(
-    currentPose.keypoints[8].position.y - currentPose.keypoints[6].position.y,
-    currentPose.keypoints[8].position.x - currentPose.keypoints[6].position.x
+    poseData.keypoints[8].position.y - poseData.keypoints[6].position.y,
+    poseData.keypoints[8].position.x - poseData.keypoints[6].position.x
   );
   rotate(angle);
   image(
@@ -386,11 +491,12 @@ function drawOutfit1() {
 
   // Draw the right arm2
   translate(scaleFactor * rightArm1.width - 10, -20);
+  rotate(-angle);
   angle = atan2(
-    currentPose.keypoints[10].position.y - currentPose.keypoints[8].position.y,
-    currentPose.keypoints[10].position.x - currentPose.keypoints[8].position.x
+    poseData.keypoints[10].position.y - poseData.keypoints[8].position.y,
+    poseData.keypoints[10].position.x - poseData.keypoints[8].position.x
   );
-  rotate(angle + PI);
+  rotate(angle);
   image(
     Outfit1LowerArm1,
     -50,
@@ -404,8 +510,8 @@ function drawOutfit1() {
   push();
   translate(bodyCenter.x + 50, bodyCenter.y + 120);
   angle = atan2(
-    currentPose.keypoints[13].position.y - currentPose.keypoints[11].position.y,
-    currentPose.keypoints[13].position.x - currentPose.keypoints[11].position.x
+    poseData.keypoints[13].position.y - poseData.keypoints[11].position.y,
+    poseData.keypoints[13].position.x - poseData.keypoints[11].position.x
   );
   rotate(angle - 0.5 * PI);
   image(
@@ -419,8 +525,8 @@ function drawOutfit1() {
   // Draw the left leg2
   translate(-45, scaleFactor * leftLeg1.height - 30);
   angle = atan2(
-    currentPose.keypoints[15].position.y - currentPose.keypoints[13].position.y,
-    currentPose.keypoints[15].position.x - currentPose.keypoints[13].position.x
+    poseData.keypoints[15].position.y - poseData.keypoints[13].position.y,
+    poseData.keypoints[15].position.x - poseData.keypoints[13].position.x
   );
   rotate(angle - 0.5 * PI + 0.1);
   image(
@@ -437,8 +543,8 @@ function drawOutfit1() {
   push();
   translate(bodyCenter.x - 50, bodyCenter.y + 100);
   angle = atan2(
-    currentPose.keypoints[14].position.y - currentPose.keypoints[12].position.y,
-    currentPose.keypoints[14].position.x - currentPose.keypoints[12].position.x
+    poseData.keypoints[14].position.y - poseData.keypoints[12].position.y,
+    poseData.keypoints[14].position.x - poseData.keypoints[12].position.x
   );
   rotate(angle - 0.5 * PI);
   image(
@@ -452,8 +558,8 @@ function drawOutfit1() {
   // Draw the right leg2
   translate(-60, scaleFactor * rightLeg1.height);
   angle = atan2(
-    currentPose.keypoints[16].position.y - currentPose.keypoints[14].position.y,
-    currentPose.keypoints[16].position.x - currentPose.keypoints[14].position.x
+    poseData.keypoints[16].position.y - poseData.keypoints[14].position.y,
+    poseData.keypoints[16].position.x - poseData.keypoints[14].position.x
   );
   rotate(angle - 0.5 * PI);
   image(
@@ -482,32 +588,185 @@ function drawOutfit1() {
   pop();
 }
 
-function lerpPoses() {
-  for (let i = 0; i < currentPose.keypoints.length; i++) {
-    let current = currentPose.keypoints[i].position;
-    let target = targetPose.keypoints[i].position;
+function drawOutfit2(poseData) {
+  var bodyCenter = getBodyCenter(poseData);
+
+  // Draw the left arm1
+  push();
+  translate(bodyCenter.x + 50, bodyCenter.y - 50);
+  scale(1.1);
+  let angle = atan2(
+    poseData.keypoints[7].position.y - poseData.keypoints[5].position.y,
+    poseData.keypoints[7].position.x - poseData.keypoints[5].position.x
+  );
+  rotate(angle);
+  image(
+    Outfit2UpperArm2,
+    10,
+    (-scaleFactor * Outfit2UpperArm2.height) / 2,
+    scaleFactor * Outfit2UpperArm2.width,
+    scaleFactor * Outfit2UpperArm2.height
+  );
+  //   Draw the left arm2
+  translate(scaleFactor * Outfit2UpperArm2.width + 20, 0);
+  rotate(-angle);
+  angle = atan2(
+    poseData.keypoints[9].position.y - poseData.keypoints[7].position.y,
+    poseData.keypoints[9].position.x - poseData.keypoints[7].position.x
+  );
+  rotate(angle);
+
+  image(
+    Outfit2LowerArm2,
+    -50,
+    (-scaleFactor * Outfit2LowerArm2.height) / 2,
+    scaleFactor * Outfit2LowerArm2.width,
+    scaleFactor * Outfit2LowerArm2.height
+  );
+  pop();
+
+  // Draw the right arm1
+  push();
+  translate(bodyCenter.x - 30, bodyCenter.y - 50);
+  angle = atan2(
+    poseData.keypoints[8].position.y - poseData.keypoints[6].position.y,
+    poseData.keypoints[8].position.x - poseData.keypoints[6].position.x
+  );
+  rotate(angle);
+  image(
+    Outfit2UpperArm1,
+    10,
+    (-scaleFactor * Outfit2UpperArm1.height) / 2,
+    scaleFactor * Outfit2UpperArm1.width,
+    scaleFactor * Outfit2UpperArm1.height
+  );
+
+  // Draw the right arm2
+  translate(scaleFactor * rightArm1.width - 10, -20);
+  ellipse(0, 0, 30, 30);
+  rotate(-angle);
+  angle = atan2(
+    poseData.keypoints[10].position.y - poseData.keypoints[8].position.y,
+    poseData.keypoints[10].position.x - poseData.keypoints[8].position.x
+  );
+  rotate(angle);
+  image(
+    Outfit2LowerArm1,
+    -50,
+    (-scaleFactor * Outfit2LowerArm1.height) / 2,
+    scaleFactor * Outfit2LowerArm1.width,
+    scaleFactor * Outfit2LowerArm1.height
+  );
+  pop();
+
+  // Draw the left leg1
+  push();
+  translate(bodyCenter.x + 70, bodyCenter.y + 150);
+  angle = atan2(
+    poseData.keypoints[13].position.y - poseData.keypoints[11].position.y,
+    poseData.keypoints[13].position.x - poseData.keypoints[11].position.x
+  );
+  rotate(angle - 0.5 * PI);
+  image(
+    Outfit2Pants2,
+    -50,
+    (-scaleFactor * Outfit2Pants2.width) / 2,
+    scaleFactor * Outfit2Pants2.width,
+    scaleFactor * Outfit2Pants2.height
+  );
+
+  // Draw the left leg2
+  translate(-45, scaleFactor * leftLeg1.height - 30);
+  angle = atan2(
+    poseData.keypoints[15].position.y - poseData.keypoints[13].position.y,
+    poseData.keypoints[15].position.x - poseData.keypoints[13].position.x
+  );
+  rotate(angle - 0.5 * PI + 0.1);
+  image(
+    Outfit2Shoes2,
+    0,
+    -20,
+    scaleFactor * Outfit2Shoes2.width,
+    scaleFactor * Outfit2Shoes2.height
+  );
+
+  pop();
+
+  // Draw the right leg1
+  push();
+  translate(bodyCenter.x - 30, bodyCenter.y + 100);
+  angle = atan2(
+    poseData.keypoints[14].position.y - poseData.keypoints[12].position.y,
+    poseData.keypoints[14].position.x - poseData.keypoints[12].position.x
+  );
+  rotate(angle - 0.5 * PI);
+  image(
+    Outfit2Pants1,
+    -50,
+    -20,
+    scaleFactor * Outfit2Pants1.width,
+    scaleFactor * Outfit2Pants1.height
+  );
+
+  // Draw the right leg2
+  translate(-60, scaleFactor * rightLeg1.height);
+  angle = atan2(
+    poseData.keypoints[16].position.y - poseData.keypoints[14].position.y,
+    poseData.keypoints[16].position.x - poseData.keypoints[14].position.x
+  );
+  rotate(angle - 0.5 * PI);
+  image(
+    Outfit2Shoes1,
+    0,
+    -20,
+    scaleFactor * Outfit2Shoes1.width,
+    scaleFactor * Outfit2Shoes1.height
+  );
+  pop();
+
+  // Draw the clothes
+  push();
+  translate(
+    bodyCenter.x - (scaleFactor * imgBody.width) / 2,
+    bodyCenter.y - (scaleFactor * imgBody.height) / 2
+  );
+  translate(-22, 70);
+  image(
+    Outfit2Body,
+    0,
+    0,
+    scaleFactor * Outfit2Body.width,
+    scaleFactor * Outfit2Body.height
+  );
+  pop();
+}
+
+function lerpPoses(currentPoseData, targetPoseData) {
+  for (let i = 0; i < currentPoseData.keypoints.length; i++) {
+    let current = currentPoseData.keypoints[i].position;
+    let target = targetPoseData.keypoints[i].position;
 
     current.x = lerp(current.x, target.x, lerpAmount);
     current.y = lerp(current.y, target.y, lerpAmount);
 
     // Also lerp the score if you're using it
     currentPose.keypoints[i].score = lerp(
-      currentPose.keypoints[i].score,
-      targetPose.keypoints[i].score,
+      currentPoseData.keypoints[i].score,
+      targetPoseData.keypoints[i].score,
       lerpAmount
     );
   }
 }
 
-function drawKeypoints() {
+function drawKeypoints(currentPoseData) {
   // if no poses were found, stop here
-  if (!currentPose) {
+  if (!currentPoseData) {
     return;
   }
 
   // go through each keypoint in the pose
-  for (let i = 0; i < currentPose.keypoints.length; i++) {
-    let keypoint = currentPose.keypoints[i];
+  for (let i = 0; i < currentPoseData.keypoints.length; i++) {
+    let keypoint = currentPoseData.keypoints[i];
 
     // if this point's accuracy score is high enough,
     // draw it as a circle and label it
