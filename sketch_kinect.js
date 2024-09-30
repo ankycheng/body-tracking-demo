@@ -46,6 +46,8 @@ let Outfit2Body,
   Outfit2UpperArm1,
   Outfit2UpperArm2;
 
+let cupImg;
+
 let scaleFactor = 0.3;
 let isPlaying = false;
 
@@ -54,7 +56,7 @@ let targetPose = null;
 
 let currentPose2 = null;
 let targetPose2 = null;
-const lerpAmount = 0.2; // Adjust this value between 0 and 1 to control smoothing
+const lerpAmount = 0.5; // Adjust this value between 0 and 1 to control smoothing
 let button;
 let outfit = false;
 
@@ -93,41 +95,44 @@ function preload() {
   Outfit2Shoes2 = loadImage("assets/Outfit2Shoes2.png");
   Outfit2UpperArm1 = loadImage("assets/Outfit2UpperArm1.png");
   Outfit2UpperArm2 = loadImage("assets/Outfit2UpperArm2.png");
+
+  cupImg = loadImage("assets/Cup.png");
 }
 
 function setup() {
   wh = windowHeight;
   ww = (wh * 16) / 9;
-  // ww = windowWidth;
-  // wh = windowHeight;
   createCanvas(ww, wh);
 
   webcam = createCapture(VIDEO);
-  //   webcam = demoVideo;
-  //   demoVideo.volume(0);
-  //   demoVideo.loop();
-
-  //   demoVideo.hide();
 
   webcam.size(width, height);
   webcam.hide();
   background(255);
 
+  // socket = io("http://192.168.68.66:3000");
+  socket = io("http://localhost:3000");
+
+  // Listen for 'skeletonData' events
+  socket.on("skeletonData", (data) => {
+    // Process the received skeleton data
+    processSkeletonData(data);
+  });
+
   var options = {
     detectionType: "single",
-    flipHorizontal: true,
+    flipHorizontal: false,
     maxPoseDetections: 2,
   };
 
-  posenet = ml5.poseNet(webcam, options);
+  // posenet = ml5.poseNet(webcam, options);
 
   // this funny-looking bit of code tells PoseNet
   // what to do every time it finds a valid pose
-  posenet.on("pose", function (results) {
-    gotPoses(results);
-  });
+  // posenet.on("pose", function (results) {
+  //   gotPoses(results);
+  // });
 
-  
   button = createButton("Start");
   button.mousePressed(() => {
     playVideo();
@@ -141,6 +146,121 @@ function setup() {
     backgroundVideo.width * (wh / backgroundVideo.height),
     wh
   );
+  button.hide();
+}
+
+function processSkeletonData(data) {
+  // console.log("Received skeleton data:", data);
+
+  // Ensure we have data and it's in the expected format
+  if (!data || !data.length) {
+    console.error("Invalid skeleton data format");
+    return;
+  }
+
+  // Process up to two skeletons
+  for (let i = 0; i < Math.min(data.length, 2); i++) {
+    if (!data[i] || !data[i].joints) {
+      console.error(`Invalid skeleton data format for skeleton ${i}`);
+      continue;
+    }
+
+    const joints = data[i].joints;
+    let keypoints = [];
+
+    const jointMapping = {
+      3: 0, // HEAD to nose
+      2: 1, // NECK to leftEye (approximation)
+      2: 2, // NECK to rightEye (approximation)
+      3: 3, // HEAD to leftEar (approximation)
+      3: 4, // HEAD to rightEar (approximation)
+      4: 5, // SHOULDERLEFT to leftShoulder
+      8: 6, // SHOULDERRIGHT to rightShoulder
+      5: 7, // ELBOWLEFT to leftElbow
+      9: 8, // ELBOWRIGHT to rightElbow
+      6: 9, // WRISTLEFT to leftWrist
+      10: 10, // WRISTRIGHT to rightWrist
+      12: 11, // HIPLEFT to leftHip
+      16: 12, // HIPRIGHT to rightHip
+      13: 13, // KNEELEFT to leftKnee
+      17: 14, // KNEERIGHT to rightKnee
+      14: 15, // ANKLELEFT to leftAnkle
+      18: 16, // ANKLERIGHT to rightAnkle
+    };
+
+    for (let poseNetIndex = 0; poseNetIndex < 17; poseNetIndex++) {
+      const kinectIndex = Object.keys(jointMapping).find(
+        (key) => jointMapping[key] === poseNetIndex
+      );
+
+      if (kinectIndex !== undefined && joints[kinectIndex]) {
+        const joint = joints[kinectIndex];
+        keypoints.push({
+          position: {
+            x: (1 -joint.depthX) * width,
+            y: joint.depthY * height,
+          },
+          score: joint.trackingState === 2 ? 1 : 0.5,
+          part: getPoseNetPartName(poseNetIndex),
+        });
+      } else {
+        keypoints.push({
+          position: { x: 0, y: 0 },
+          score: 0,
+          part: getPoseNetPartName(poseNetIndex),
+        });
+      }
+    }
+
+    // Create a PoseNet-like structure
+    let pose = {
+      keypoints: keypoints,
+      score: 1, // You might want to calculate this based on individual keypoint scores
+    };
+
+    // Update poses based on which skeleton we're processing
+    if (i === 0) {
+      targetPose = pose;
+      if (!currentPose) {
+        currentPose = JSON.parse(JSON.stringify(pose));
+      } else {
+        // Smooth transition between poses
+        lerpPoses(currentPose, targetPose);
+      }
+    } else if (i === 1) {
+      targetPose2 = pose;
+      if (!currentPose2) {
+        currentPose2 = JSON.parse(JSON.stringify(pose));
+      } else {
+        // Smooth transition between poses
+        lerpPoses(currentPose2, targetPose2);
+      }
+    }
+  }
+}
+
+// Helper function to get PoseNet part names (same as before)
+function getPoseNetPartName(index) {
+  const partNames = [
+    "nose",
+    "leftEye",
+    "rightEye",
+    "leftEar",
+    "rightEar",
+    "leftShoulder",
+    "rightShoulder",
+    "leftElbow",
+    "rightElbow",
+    "leftWrist",
+    "rightWrist",
+    "leftHip",
+    "rightHip",
+    "leftKnee",
+    "rightKnee",
+    "leftAnkle",
+    "rightAnkle",
+  ];
+  return partNames[index];
 }
 
 function playVideo() {
@@ -156,7 +276,6 @@ function playVideo() {
 
 function gotPoses(results) {
   if (results.length > 0) {
-    // console.log(results);
     targetPose = results[0].pose;
     if (!currentPose) {
       currentPose = JSON.parse(JSON.stringify(targetPose));
@@ -164,15 +283,12 @@ function gotPoses(results) {
     if (
       results.length > 1 &&
       abs(getBodyCenter(results[0].pose).x - getBodyCenter(results[1].pose).x) >
-        300
+        100
     ) {
       targetPose2 = results[1].pose;
       if (!currentPose2) {
         currentPose2 = JSON.parse(JSON.stringify(targetPose2));
       }
-    } else {
-      targetPose2 = null;
-      currentPose2 = null;
     }
   }
 }
@@ -187,52 +303,37 @@ function draw() {
     backgroundVideo.width * (wh / backgroundVideo.height),
     wh
   );
-  // translate(width, 0);
-  // scale(-1, 1);
-  //   scale(ww / demoVideo.width, wh / demoVideo.height);
-
-  //   image(demoVideo, 0, 0, width, height);
-  // scale(-1, 1);
-  // image(webcam, 0, 0, -width, height);
   pop();
+  // console.log("currentPose", currentPose);
+  // console.log("targetPose", targetPose);
   if (currentPose && targetPose) {
     push();
-    lerpPoses(currentPose, targetPose);
-    // drawKeypoints(currentPose);
-
-    push();
-    // translate(0, -10);
-    scale(0.5);
+    scale(-1, 1);
+    translate(-width + width/3, 0);
+    translate(0, 150);
+    scale(0.8);
     drawBody(currentPose);
     if (outfit) {
       tint(255, fadeAlpha);
       fadeAlpha += 10;
-      drawOutfit2(currentPose);
+      drawOutfit1(currentPose);
       noTint();
     }
     pop();
-    pop();
   }
-  if (
-    currentPose2 &&
-    targetPose2 &&
-    abs(getBodyCenter(currentPose2).x - getBodyCenter(currentPose).x) > 500
-  ) {
+  if (currentPose2 && targetPose2) {
     push();
-    lerpPoses(currentPose2, targetPose2);
-    // drawKeypoints(currentPose2);
-
-    push();
-    // translate(0, -10);
-    scale(0.5);
+    scale(-1, 1);
+    translate(-width, 0);
+    translate(0, 150);
+    scale(0.8);
     drawBody(currentPose2);
     if (outfit) {
       tint(255, fadeAlpha);
       fadeAlpha += 10;
-      drawOutfit1(currentPose2);
+      drawOutfit2(currentPose2); // You might want to use a different outfit for the second person
       noTint();
     }
-    pop();
     pop();
   }
 }
@@ -252,6 +353,9 @@ function keyPressed() {
       backgroundVideo.play();
       isPlaying = true;
     }
+  }
+  if (keyCode === 13) {
+    playVideo();
   }
 }
 
@@ -425,12 +529,12 @@ function drawBody(poseData) {
   );
   rotate(angle - 0.5 * PI);
   if (!outfit) {
-  image(
-    rightLeg2,
-    (-scaleFactor * rightLeg2.width) / 2,
-    0,
-    scaleFactor * rightLeg2.width,
-    scaleFactor * rightLeg2.height
+    image(
+      rightLeg2,
+      (-scaleFactor * rightLeg2.width) / 2,
+      0,
+      scaleFactor * rightLeg2.width,
+      scaleFactor * rightLeg2.height
     );
   }
   pop();
@@ -503,6 +607,15 @@ function drawOutfit1(poseData) {
     (-scaleFactor * Outfit1LowerArm1.height) / 2,
     scaleFactor * Outfit1LowerArm1.width,
     scaleFactor * Outfit1LowerArm1.height
+  );
+  translate(180, -20);
+  rotate(PI);
+  image(
+    cupImg,
+    -10,
+    -30,
+    scaleFactor * cupImg.width,
+    scaleFactor * cupImg.height
   );
   pop();
 
@@ -657,11 +770,20 @@ function drawOutfit2(poseData) {
     scaleFactor * Outfit2LowerArm1.width,
     scaleFactor * Outfit2LowerArm1.height
   );
+  translate(180, -20);
+  rotate(PI);
+  image(
+    cupImg,
+    -10,
+    -50,
+    scaleFactor * cupImg.width,
+    scaleFactor * cupImg.height
+  );
   pop();
 
   // Draw the left leg1
   push();
-  translate(bodyCenter.x + 70, bodyCenter.y + 150);
+  translate(bodyCenter.x + 30, bodyCenter.y + 150);
   angle = atan2(
     poseData.keypoints[13].position.y - poseData.keypoints[11].position.y,
     poseData.keypoints[13].position.x - poseData.keypoints[11].position.x
@@ -676,7 +798,7 @@ function drawOutfit2(poseData) {
   );
 
   // Draw the left leg2
-  translate(-45, scaleFactor * leftLeg1.height - 30);
+  translate(-15, scaleFactor * leftLeg1.height - 30);
   angle = atan2(
     poseData.keypoints[15].position.y - poseData.keypoints[13].position.y,
     poseData.keypoints[15].position.x - poseData.keypoints[13].position.x
@@ -694,7 +816,7 @@ function drawOutfit2(poseData) {
 
   // Draw the right leg1
   push();
-  translate(bodyCenter.x - 30, bodyCenter.y + 100);
+  translate(bodyCenter.x - 60, bodyCenter.y + 100);
   angle = atan2(
     poseData.keypoints[14].position.y - poseData.keypoints[12].position.y,
     poseData.keypoints[14].position.x - poseData.keypoints[12].position.x
@@ -709,7 +831,7 @@ function drawOutfit2(poseData) {
   );
 
   // Draw the right leg2
-  translate(-60, scaleFactor * rightLeg1.height);
+  translate(-30, scaleFactor * rightLeg1.height);
   angle = atan2(
     poseData.keypoints[16].position.y - poseData.keypoints[14].position.y,
     poseData.keypoints[16].position.x - poseData.keypoints[14].position.x
@@ -750,7 +872,7 @@ function lerpPoses(currentPoseData, targetPoseData) {
     current.y = lerp(current.y, target.y, lerpAmount);
 
     // Also lerp the score if you're using it
-    currentPose.keypoints[i].score = lerp(
+    currentPoseData.keypoints[i].score = lerp(
       currentPoseData.keypoints[i].score,
       targetPoseData.keypoints[i].score,
       lerpAmount
